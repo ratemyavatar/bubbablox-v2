@@ -1,0 +1,16 @@
+{
+  "name": "modern-roblox",
+  "version": "1.0.0",
+  "description": "Accurate Roblox copy assembled from the saved modern Roblox HTML pages, hosted with express (dependency reused from the repo's api/package.json). SQLite storage via Node's built-in node:sqlite — no native modules, runs on Termux/Android.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "express": "^4.17.1"
+  }
+}

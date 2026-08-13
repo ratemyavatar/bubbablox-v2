@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin - BubbaBlox</title>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Source Sans Pro', Arial, Helvetica, sans-serif; background: #f2f2f2; color: #191919; font-size: 14px; }
+    header { background: #0074BD; color: #fff; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+    header .logo { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+    header .logo span { font-weight: 300; }
+    header a { color: #fff; text-decoration: none; font-size: 14px; }
+    header a:hover { text-decoration: underline; }
+    .container { max-width: 1100px; margin: 26px auto; padding: 0 16px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .card { background: #fff; border-radius: 6px; box-shadow: 0 1px 4px rgba(25, 25, 25, 0.2); padding: 20px; }
+    .card .num { font-size: 34px; font-weight: 700; color: #0074BD; }
+    .card .label { color: #666; font-size: 14px; margin-top: 2px; }
+    h2 { font-size: 18px; font-weight: 600; color: #343434; margin: 0 0 12px; }
+    .panel { background: #fff; border-radius: 6px; box-shadow: 0 1px 4px rgba(25, 25, 25, 0.2); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 16px; text-align: left; font-size: 14px; border-bottom: 1px solid #ebebeb; }
+    th { background: #f7f7f7; color: #666; font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; background: #00A2FF; color: #fff; border-radius: 10px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+    .muted { color: #999; }
+    .verified { width: 14px; height: 14px; vertical-align: middle; margin-left: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">BUBBABLOX <span>Admin</span></div>
+    <a href="/games">&larr; Back to site</a>
+  </header>
+  <div class="container">
+    <div class="cards">
+      <div class="card"><div class="num" id="s-users">–</div><div class="label">Total Users</div></div>
+      <div class="card"><div class="num" id="s-sessions">–</div><div class="label">Active Sessions</div></div>
+      <div class="card"><div class="num" id="s-verified">–</div><div class="label">Verified Users</div></div>
+    </div>
+    <h2>Recent Users</h2>
+    <div class="panel">
+      <table>
+        <thead><tr><th>ID</th><th>Username</th><th>Gender</th><th>Status</th></tr></thead>
+        <tbody id="t-users"><tr><td colspan="4" class="muted" style="text-align:center">Loading&hellip;</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    fetch('/admin-api/stats')
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        document.getElementById('s-users').textContent = d.users;
+        document.getElementById('s-sessions').textContent = d.sessions;
+        document.getElementById('s-verified').textContent = d.verified;
+        var tb = document.getElementById('t-users');
+        if (!d.recent || !d.recent.length) {
+          tb.innerHTML = '<tr><td colspan="4" class="muted" style="text-align:center">No users yet</td></tr>';
+          return;
+        }
+        tb.innerHTML = d.recent.map(function (u) {
+          var gender = u.gender == 2 ? 'Male' : u.gender == 3 ? 'Female' : '&mdash;';
+          return '<tr><td>' + u.id + '</td><td>' + u.username + '<img src="/verified.svg" class="verified" alt="" /></td><td>' + gender + '</td><td><span class="badge">Verified</span></td></tr>';
+        }).join('');
+      })
+      .catch(function () {
+        document.getElementById('s-users').textContent = '—';
+        document.getElementById('s-sessions').textContent = '—';
+        document.getElementById('s-verified').textContent = '—';
+        document.getElementById('t-users').innerHTML = '<tr><td colspan="4" class="muted" style="text-align:center">Log in to view admin data</td></tr>';
+      });
+  </script>
+</body>
+</html>
