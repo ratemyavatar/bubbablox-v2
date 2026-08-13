@@ -941,6 +941,23 @@ function patchCachedShell(html, pageName) {
       .replace(/BedWars &#127881; \[SEASON 4!\]|BedWars/g, 'Baseplate')
       .replace(/Easy\.gg|Easy Games/g, 'Roblox')
       .replace(/86,191|2,259,007|2\.8B\+/g, '0');
+    // strip the server-rendered static game content (the double-render
+    // source): keep the container-main div but empty it, so only the
+    // fallback content shows (no duplicated game info)
+    const cmo = html.indexOf('<div class="container-main');
+    if (cmo !== -1) {
+      const cmTagEnd = html.indexOf('>', cmo);
+      let depth = 0, k = cmo;
+      let cmClose = html.length;
+      const re = /<div\b|<\/div>/g;
+      re.lastIndex = cmo;
+      let mm;
+      while ((mm = re.exec(html)) !== null) {
+        if (mm[0] === '</div>') { depth--; if (depth === 0) { cmClose = mm.index; break; } }
+        else depth++;
+      }
+      html = html.slice(0, cmTagEnd + 1) + html.slice(cmClose);
+    }
   } else if (pageName === 'profile') {
     // the cached profile (PoptartNoah / 88438775) is scrubbed of all its
     // cached user data; the session user's meta is inserted by
@@ -951,8 +968,16 @@ function patchCachedShell(html, pageName) {
     const metaMatch = /<meta name="user-data"[\s\S]*?\/?>/.exec(html);
     const meta = metaMatch ? metaMatch[0] : '';
     if (meta) html = html.replace(meta, '<!--USERDATA-->');
-    // stable container id for the fallback to fill (was the cached user id)
-    html = html.replace(/id="[0-9]+"/, 'id="profile-root"');
+    // stable container id for the fallback to fill: the profile container is
+    // <div data-profileuserid="..."> - add id="profile-root" to it and scrub
+    // the cached counts; NEVER touch data-emblem-id (a thumbnail attribute)
+    // the generic scrub above already emptied data-profileuserid; add the
+    // stable container id to the profile container div regardless
+    html = html.replace(/(<div data-profileuserid="[^"]*")([^>]*>)/, '$1 id="profile-root"$2');
+    html = html.replace(/data-friendscount="[0-9]+"/, 'data-friendscount="0"');
+    html = html.replace(/data-followerscount="[0-9]+"/, 'data-followerscount="0"');
+    html = html.replace(/data-followingscount="[0-9]+"/, 'data-followingscount="0"');
+    html = html.replace(/data-friendurl="[^"]*"/, 'data-friendurl="/users/1/friends#!/friends"');
     html = html
       .replace(/<title>[^<]*<\/title>/i, '<title>Profile - Roblox</title>')
       .replace(/PoptartNoah|PoptartNoahh|88438775|@PoptartNoahh/g, '')
@@ -961,6 +986,21 @@ function patchCachedShell(html, pageName) {
       .replace(/ARES VR|Hellreaver Campaign|\(MOBILE\) Hellreaver Arena|Survival: Beginnings|7 Seas Of Sorrow|Rancor \(Legacy\)|BloxPT|Projection Rasterizer Demo|RooM/g, '')
       .replace(/[0-9]+%|<br>/g, '');
     if (meta) html = html.replace('<!--USERDATA-->', meta);
+    // strip the cached profile content (the double-render source): empty the
+    // profile container (id=profile-root) so only the fallback content shows
+    const pro = html.indexOf('id="profile-root"');
+    if (pro !== -1) {
+      const tagEnd = html.indexOf('>', pro);
+      let depth = 0, k = pro, prClose = html.length;
+      const re = /<div\b|<\/div>/g;
+      re.lastIndex = pro;
+      let mm;
+      while ((mm = re.exec(html)) !== null) {
+        if (mm[0] === '</div>') { depth--; if (depth === 0) { prClose = mm.index; break; } }
+        else depth++;
+      }
+      html = html.slice(0, tagEnd + 1) + html.slice(prClose);
+    }
   }
   return html;
 }

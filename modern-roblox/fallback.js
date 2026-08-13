@@ -36,6 +36,9 @@
 
   var path = location.pathname;
   var areaId = AREAS[path];
+  // game-details routes fill the game content area
+  var isGameDetails = /^\/games\/[^/]+/.test(path) && path !== '/games';
+  if (isGameDetails) areaId = 'container-main';
   // profile routes (/profile and /users/:id/:tab) fill the profile content
   var isProfile = path === '/profile' || /^\/users\//.test(path);
   if (isProfile) areaId = 'profile-root';
@@ -282,6 +285,7 @@
   };
 
   var build = builders[path];
+  if (isGameDetails) build = gamedetailsHtml;
   if (isProfile) build = profileHtml;
   if (!build) return;
 
@@ -293,7 +297,7 @@
     var text = (area.innerText || '').trim();
     // bundle rendered real content -> leave it alone (game details always
     // shows the default Baseplate page, so it always replaces)
-    if (!isProfile && text && !/^loading/i.test(text)) { clearInterval(timer); return; }
+    if (!isProfile && !isGameDetails && text && !/^loading/i.test(text)) { clearInterval(timer); return; }
     if (tries < 7) return; // give the bundle ~3.5s
     clearInterval(timer);
     try { area.innerHTML = build(); } catch (e) { /* ignore */ }
