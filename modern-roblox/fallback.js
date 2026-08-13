@@ -35,9 +35,10 @@
   };
 
   var path = location.pathname;
-  // game-details routes (/games/:id/:name) all show the one default game
-  var isGameDetails = /^\/games\/[^/]+/.test(path) && path !== '/games';
-  var areaId = isGameDetails ? 'container-main' : AREAS[path];
+  var areaId = AREAS[path];
+  // profile routes (/profile and /users/:id/:tab) fill the profile content
+  var isProfile = path === '/profile' || /^\/users\//.test(path);
+  if (isProfile) areaId = 'profile-root';
   if (!areaId) return;
 
   var meta = document.querySelector('meta[name="user-data"]');
@@ -150,15 +151,12 @@
 
   /* ---- games: game rows only (the discover feed, no dashboard greeting) ---- */
   function gamesHtml() {
-    function gameRow(title, games) {
-      return '<h3 style="font-weight:300;font-size:24px;color:#4a4a4a;margin:26px 0 10px">' + esc(title) + '</h3>' +
-        '<div style="display:flex;gap:16px;flex-wrap:wrap">' + games + '</div>';
-    }
+    // the one game on the site: Baseplate by Roblox
     return '<div style="' + page + '">' +
       '<h1 style="' + h1 + '">Games</h1>' +
-      gameRow('Featured', gameCard('OG surf [UPDATE]', '13K visits', 'https://images.rbxcdn.com/42268b6264d89827401ef912f174f288.jpg', '/games') + gameCard('ROBLOX Point', '2.1K playing', 'https://images.rbxcdn.com/04baeb33ef66ef1395cd5464309fece6.jpg', '/games') + gameCard('Bubble Blox', '1.4K playing', 'https://images.rbxcdn.com/e8b89d14690203420d64b5b2fda0b461.jpg', '/games')) +
-      gameRow('Popular', gameCard('Classic T-Shirt', 'R$5', '', '/catalog') + gameCard('Builders Club Hat', 'R$15', '', '/catalog') + gameCard('Turbo Builders Club Hat', 'R$35', '', '/catalog')) +
-      '</div>';
+      '<div style="display:flex;gap:16px;flex-wrap:wrap">' +
+      gameCard('Baseplate', 'By Roblox', '', '/games/1/Baseplate') +
+      '</div></div>';
   }
 
   /* ---- groups: generic group page (no cached data) ---- */
@@ -192,6 +190,34 @@
       '<div style="flex:1;text-align:center"><div style="font-size:20px;color:#343434">0</div><div style="font-size:12px;color:#666">Visits</div></div>' +
       '<div style="flex:1;text-align:center"><div style="font-size:20px;color:#343434">0</div><div style="font-size:12px;color:#666">Active</div></div>' +
       '</div></div></div></div>';
+  }
+
+  /* ---- profile: clean modern profile (session user, no cached data) ---- */
+  function profileHtml() {
+    var verified = USER.verified
+      ? '<img src="/verified.svg" alt="Verified" style="width:18px;height:18px;margin-left:4px;vertical-align:middle" />'
+      : '';
+    return '<div style="' + page + '">' +
+      '<div style="' + card + ';display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:18px">' +
+      '<div style="width:110px;height:110px;border-radius:50%;border:1px solid #B8B8B8;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto">' +
+      '<img src="/assets/images/Avatar/avatar-headshot-placeholder.svg" alt="" style="width:80px;height:80px" /></div>' +
+      '<div style="flex:1;min-width:200px">' +
+      '<div style="font-size:30px;font-weight:400;color:#343434;line-height:1.2">' + esc(USER.name) + ' ' + verified + '</div>' +
+      '<div style="font-size:14px;color:#666;margin-top:2px">User ID: ' + esc(USER.id || '—') + '</div>' +
+      '<div style="font-size:16px;font-weight:300;color:#666;margin-top:4px">Offline</div>' +
+      '</div>' +
+      '<a href="/settings" style="' + btn + '">Edit Profile</a>' +
+      '</div>' +
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px">' +
+      '<div style="' + card + ';flex:1;min-width:140px;text-align:center"><div style="font-size:24px;color:#343434">0</div><div style="font-size:13px;color:#666">Friends</div></div>' +
+      '<div style="' + card + ';flex:1;min-width:140px;text-align:center"><div style="font-size:24px;color:#343434">0</div><div style="font-size:13px;color:#666">Followers</div></div>' +
+      '<div style="' + card + ';flex:1;min-width:140px;text-align:center"><div style="font-size:24px;color:#343434">0</div><div style="font-size:13px;color:#666">Following</div></div>' +
+      '</div>' +
+      '<div style="font-size:24px;font-weight:300;color:#343434;margin:22px 0 8px">About</div>' +
+      '<div style="' + card + ';color:#191919;font-size:15px;line-height:1.5">' + (USER.name === 'Guest' ? 'Say hello! Edit your profile to add a bio.' : 'This is the about section of your profile. Edit it in Settings.') + '</div>' +
+      '<div style="font-size:24px;font-weight:300;color:#343434;margin:22px 0 8px">Creations</div>' +
+      '<div style="' + card + '"><div style="text-align:center;color:#666;padding:20px 16px;font-size:15px">No creations yet. Use the <a href="/games" style="' + link + '">Create</a> tools to make your first experience!</div></div>' +
+      '</div>';
   }
 
   var builders = {
@@ -256,7 +282,7 @@
   };
 
   var build = builders[path];
-  if (isGameDetails) { build = gamedetailsHtml; }
+  if (isProfile) build = profileHtml;
   if (!build) return;
 
   var tries = 0;
@@ -267,7 +293,7 @@
     var text = (area.innerText || '').trim();
     // bundle rendered real content -> leave it alone (game details always
     // shows the default Baseplate page, so it always replaces)
-    if (!isGameDetails && text && !/^loading/i.test(text)) { clearInterval(timer); return; }
+    if (!isProfile && text && !/^loading/i.test(text)) { clearInterval(timer); return; }
     if (tries < 7) return; // give the bundle ~3.5s
     clearInterval(timer);
     try { area.innerHTML = build(); } catch (e) { /* ignore */ }

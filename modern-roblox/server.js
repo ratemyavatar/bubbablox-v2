@@ -175,7 +175,10 @@ function parseCookies(req) {
 function issueSession(res, user) {
   const token = crypto.randomBytes(32).toString('hex');
   saveSession(token, user.id);
-  res.cookie(COOKIE_NAME, token, { httpOnly: true, path: '/' });
+  res.cookie(COOKIE_NAME, token, { httpOnly: true, path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
+}
+function refreshCookie(res, token) {
+  res.cookie(COOKIE_NAME, token, { httpOnly: true, path: '/', maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax' });
 }
 
 function clearSession(req, res) {
@@ -421,6 +424,7 @@ app.post('*', (req, res, next) => {
 function authenticatedJson(req, res) {
   const user = currentUser(req);
   if (!user) return apiError(res, 401, 0, 'You are not logged in.');
+  refreshCookie(res, parseCookies(req)[COOKIE_NAME]);
   // same shape as the real users.roblox.com/v1/users/authenticated, so the
   // CDN nav bundle renders the account correctly
   res.json({
@@ -506,6 +510,7 @@ app.get('/users/:id/:tab?', (req, res) => {
   html = deWayback(html);
   html = patchSessionMarkup(html, currentUser(req));
   html = patchCachedShell(html, 'profile');
+  html = replaceUniversalNav(html);
   if (/navigation-container|react-landing-container/.test(html)) {
     if (html.indexOf('</body>') !== -1) html = html.replace('</body>', PAGE_SCRIPTS + '</body>');
     else html = html + PAGE_SCRIPTS;
@@ -522,6 +527,7 @@ app.get('/games/:id/:name?', (req, res) => {
   html = deWayback(html);
   html = patchSessionMarkup(html, currentUser(req));
   html = patchCachedShell(html, 'gamedetails');
+  html = replaceUniversalNav(html);
   if (/navigation-container|react-landing-container/.test(html)) {
     if (html.indexOf('</body>') !== -1) html = html.replace('</body>', PAGE_SCRIPTS + '</body>');
     else html = html + PAGE_SCRIPTS;
@@ -767,6 +773,10 @@ const AUTH_STATE = [
   "  function setState(loggedIn) {",
   "    var wrap = document.getElementById('wrap');",
   "    if (wrap) { wrap.classList.remove(loggedIn ? 'logged-out' : 'logged-in'); wrap.classList.add(loggedIn ? 'logged-in' : 'logged-out'); }",
+  "    var adm = document.getElementById('nav-admin-md-link');",
+  "    if (adm) adm.style.display = loggedIn ? '' : 'none';",
+  "    var ads = document.getElementById('nav-admin-sm-link');",
+  "    if (ads) ads.style.display = loggedIn ? '' : 'none';",
   "    if (!loggedIn) {",
   "      var ac = document.getElementById('navigation-account-switcher-container');",
   "      if (ac) ac.style.display = 'none';",
@@ -833,7 +843,6 @@ const ADMIN_NAV = [
   '   only for admins (checked against the authenticated endpoint) */',
   '(function () {',
   "  function inject() {",
-  "    if (window.__bblAdmin !== true) return;",
   "    var links = document.querySelectorAll('a[href]');",
   "    for (var i = 0; i < links.length; i++) {",
   "      var a = links[i];",
@@ -862,9 +871,6 @@ const ADMIN_NAV = [
   "  inject();",
   "  if (window.MutationObserver) { var mo = new MutationObserver(function () { inject(); }); mo.observe(document.body, { childList: true, subtree: true }); }",
   "  setInterval(inject, 900);",
-  "  fetch('/apisite/users/v1/users/authenticated').then(function (r) {",
-  "    return r.json().then(function (d) { window.__bblAdmin = !!(d && d.isAdmin); inject(); });",
-  "  }).catch(function () { });",
   '})();',
   '</script>',
 ].join('\n');
@@ -875,6 +881,27 @@ const PAGE_SCRIPTS = NAV_FIX + '\n' + AUTH_REWRITE + '\n' + AUTH_STATE + '\n' + 
 /* /home uses the cached home shell; /games uses the cached discover shell;
  * /groups uses the cached group shell (all scrubbed at serve time) */
 const PAGE_FILES = { home: 'home.html', games: 'discover.html', groups: 'groupshell.html' };
+
+/* ---- universal navbar ------------------------------------------------
+ * The nav is extracted once from the cached discover shell (navbar.html) and
+ * swapped into EVERY modern page at serve time, so the navbar is identical
+ * across pages and never changes when a different HTML shell is used. */
+const NAVBAR = fs.existsSync(path.join(root, 'navbar.html')) ? fs.readFileSync(path.join(root, 'navbar.html'), 'utf8') : '';
+function replaceUniversalNav(html) {
+  if (!NAVBAR) return html;
+  const marker = '<div id="navigation-container"';
+  const i = html.indexOf(marker);
+  if (i === -1) return html;
+  let depth = 0, j = html.length;
+  const re = /<div\b|<\/div>/g;
+  re.lastIndex = i;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    if (m[0] === '</div>') { depth--; if (depth === 0) { j = m.index + 6; break; } }
+    else depth++;
+  }
+  return html.slice(0, i) + NAVBAR + html.slice(j);
+}
 
 /* ---- scrub the cached shells -------------------------------------------
  * The cached pages (home/discover/groups/gamedetails) were saved from a real
@@ -924,10 +951,13 @@ function patchCachedShell(html, pageName) {
     const metaMatch = /<meta name="user-data"[\s\S]*?\/?>/.exec(html);
     const meta = metaMatch ? metaMatch[0] : '';
     if (meta) html = html.replace(meta, '<!--USERDATA-->');
+    // stable container id for the fallback to fill (was the cached user id)
+    html = html.replace(/id="[0-9]+"/, 'id="profile-root"');
     html = html
       .replace(/<title>[^<]*<\/title>/i, '<title>Profile - Roblox</title>')
       .replace(/PoptartNoah|PoptartNoahh|88438775|@PoptartNoahh/g, '')
-      .replace(/Programmer, artist\.|https:\/\/devforum\.roblox\.com\/t\/665332/g, '')
+      .replace(/Programmer, artist\./g, '')
+      .replace(/https?:\/\/devforum\.roblox\.com[^"'< ]*/g, '')
       .replace(/ARES VR|Hellreaver Campaign|\(MOBILE\) Hellreaver Arena|Survival: Beginnings|7 Seas Of Sorrow|Rancor \(Legacy\)|BloxPT|Projection Rasterizer Demo|RooM/g, '')
       .replace(/[0-9]+%|<br>/g, '');
     if (meta) html = html.replace('<!--USERDATA-->', meta);
@@ -943,6 +973,7 @@ app.get(/^\/([a-z0-9-]*)$/i, (req, res, next) => {
   html = deWayback(html);
   html = patchSessionMarkup(html, currentUser(req));
   html = patchCachedShell(html, (PAGE_FILES[name] || (name + '.html')).replace(/\.html$/, ''));
+  html = replaceUniversalNav(html);
   // inject the client scripts only into the modern pages (the 2016-era
   // UnsecuredContent pages are self-contained and left untouched)
   if (/navigation-container|react-landing-container/.test(html)) {
