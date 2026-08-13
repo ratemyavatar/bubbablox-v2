@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Settings>
+	<!-- Where RCC fetches Roblox content/assets from - point this at your site.
+	     The renderer's config.json baseUrl should match. -->
 	<ContentFolder>content</ContentFolder>
-	<BaseUrl>http://bbblox.org</BaseUrl>
+	<BaseUrl>http://localhost:8080</BaseUrl>
 </Settings>

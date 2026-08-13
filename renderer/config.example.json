@@ -1,11 +1,11 @@
 {
-    "rcc": "C:\\Users\\Admin\\Desktop\\Revival\\ecsr\\ecsrev-main\\services\\RCCService",
-    "rccexe": "RCCService.exe",
+    "rcc": "/data/data/com.termux/files/home/rcc-linux/RCCService2020",
+    "rccexe": "RCCService",
     "authorization": "RendererAuthInTheAppSettingsConfigJsonFileTheyShouldMatch",
-    "baseUrl": "https://your.domain",
+    "baseUrl": "http://localhost:8080",
     "rccPort": 64989,
     "port": 3040,
     "websiteBotAuth": "TheBotAuthInTheAppSettingsConfigJson",
     "thumbnailWebsocketPort": 3189,
-    "webhook": "YourWebhook"
+    "webhook": ""
 }
