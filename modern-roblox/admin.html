@@ -68,11 +68,11 @@
           return '<tr><td>' + u.id + '</td><td>' + u.username + '<img src="/verified.svg" class="verified" alt="" /></td><td>' + gender + '</td><td><span class="badge">Verified</span></td></tr>';
         }).join('');
       })
-      .catch(function () {
+      .catch(function (e) {
         document.getElementById('s-users').textContent = '—';
         document.getElementById('s-sessions').textContent = '—';
         document.getElementById('s-verified').textContent = '—';
-        document.getElementById('t-users').innerHTML = '<tr><td colspan="4" class="muted" style="text-align:center">Log in to view admin data</td></tr>';
+        document.getElementById('t-users').innerHTML = '<tr><td colspan="4" class="muted" style="text-align:center">Admin access required</td></tr>';
       });
   </script>
 </body>

@@ -58,9 +58,12 @@ if (sqlite) {
     '  username TEXT NOT NULL UNIQUE,' +
     '  password TEXT NOT NULL,' +
     '  gender INTEGER,' +
-    '  birthday TEXT' +
+    '  birthday TEXT,' +
+    '  isAdmin INTEGER DEFAULT 0' +
     ')'
   );
+  // keep schema compatible with DBs created before the admin column
+  try { sqlite.exec('ALTER TABLE users ADD COLUMN isAdmin INTEGER DEFAULT 0'); } catch (e) { /* already there */ }
   sqlite.exec(
     'CREATE TABLE IF NOT EXISTS sessions (' +
     '  token TEXT PRIMARY KEY,' +
@@ -91,15 +94,39 @@ function findUserById(id) {
 function insertUser(username, password, gender, birthday) {
   const storedPassword = hashPassword(password);
   if (sqlite) {
-    const info = sqlite.prepare('INSERT INTO users (username, password, gender, birthday) VALUES (?, ?, ?, ?)')
+    const info = sqlite.prepare('INSERT INTO users (username, password, gender, birthday, isAdmin) VALUES (?, ?, ?, ?, 0)')
       .run(username, storedPassword, gender, JSON.stringify(birthday));
-    return { id: Number(info.lastInsertRowid), username, password: storedPassword, gender, birthday };
+    return { id: Number(info.lastInsertRowid), username, password: storedPassword, gender, birthday, isAdmin: 0 };
   }
-  const user = { id: nextUserId++, username, password: storedPassword, gender, birthday };
+  const user = { id: nextUserId++, username, password: storedPassword, gender, birthday, isAdmin: 0 };
   users.push(user);
   saveJson(USERS_FILE, users);
   return user;
 }
+
+/* isAdmin: reads the column if present (old rows default to 0) */
+function isAdminUser(user) {
+  if (!user) return false;
+  return user.isAdmin === 1 || user.isAdmin === true || user.isAdmin === '1';
+}
+function seedRobloxAdmin() {
+  // the default game is by Roblox: make user 'Roblox' an admin account
+  const pw = 'password123';
+  try {
+    let row = findByUsername('Roblox');
+    if (row) {
+      if (!isAdminUser(row)) {
+        if (sqlite) sqlite.prepare('UPDATE users SET isAdmin = 1 WHERE username = ?').run('Roblox');
+        else { row.isAdmin = 1; saveJson(USERS_FILE, users); }
+      }
+    } else {
+      const u = insertUser('Roblox', pw, 2, ['Jan', '1', '2006']);
+      if (sqlite) sqlite.prepare('UPDATE users SET isAdmin = 1 WHERE id = ?').run(u.id);
+      else { u.isAdmin = 1; saveJson(USERS_FILE, users); }
+    }
+  } catch (e) { /* ignore */ }
+}
+seedRobloxAdmin();
 function saveSession(token, userId) {
   if (sqlite) { sqlite.prepare('INSERT INTO sessions (token, userId, created) VALUES (?, ?, ?)').run(token, userId, Date.now()); return; }
   sessions[token] = { userId, created: Date.now() };
@@ -327,7 +354,7 @@ app.all('/__api/*', (req, res) => {
     if (p.indexOf('/v1/users/authenticated') === 0) {
       const user = currentUser(req);
       if (!user) return apiError(res, 401, 0, 'You are not logged in.');
-      body = { description: '', created: '2020-01-01T00:00:00.000Z', isBanned: false, externalAppDisplayName: null, hasVerifiedBadge: true, id: user.id, name: user.username, displayName: user.username };
+      body = { description: '', created: '2020-01-01T00:00:00.000Z', isBanned: false, externalAppDisplayName: null, hasVerifiedBadge: true, isAdmin: isAdminUser(user), id: user.id, name: user.username, displayName: user.username };
     } else if (/^\/v1\/users\/[^/]+\/username-history/.test(p)) body = { data: [], nextPageCursor: null };
     else if (/^\/v1\/users\/[^/]+\/(status|canmanage|birthdate)$/.test(p)) body = { status: '', canManage: false, birthdate: '2020-01-01T00:00:00.000Z' };
     else body = {};
@@ -402,6 +429,7 @@ function authenticatedJson(req, res) {
     isBanned: false,
     externalAppDisplayName: null,
     hasVerifiedBadge: true,
+    isAdmin: isAdminUser(user),
     id: user.id,
     name: user.username,
     displayName: user.username,
@@ -468,9 +496,22 @@ const ALIASES = {
 };
 Object.keys(ALIASES).forEach(from => app.get(from, (req, res) => res.redirect(ALIASES[from])));
 app.get(/^\/admin\/$/, (req, res) => res.redirect('/admin'));
-app.get('/users/:id/profile', (req, res) => res.redirect('/profile'));
-app.get('/users/:id/inventory', (req, res) => res.redirect('/inventory'));
-app.get('/users/:id', (req, res) => res.redirect('/profile'));
+/* user routes: /users/:id and /users/:id/:tab (profile/friends/favorites/
+ * inventory) all serve the profile page (per the cached user-format links
+ * e.g. /users/88438775/profile, /users/88438775/friends#!/followers) */
+app.get('/users/:id/:tab?', (req, res) => {
+  const file = path.join(root, 'profile.html');
+  if (!fs.existsSync(file)) return res.redirect('/profile');
+  let html = fs.readFileSync(file, 'utf8');
+  html = deWayback(html);
+  html = patchSessionMarkup(html, currentUser(req));
+  html = patchCachedShell(html, 'profile');
+  if (/navigation-container|react-landing-container/.test(html)) {
+    if (html.indexOf('</body>') !== -1) html = html.replace('</body>', PAGE_SCRIPTS + '</body>');
+    else html = html + PAGE_SCRIPTS;
+  }
+  res.type('html').send(html);
+});
 app.get('/groups/:id/:name?', (req, res) => res.redirect('/groups'));
 app.get('/games/:id/:name?', (req, res) => {
   // one default game: Baseplate by Roblox - serve the game-details shell
@@ -788,9 +829,11 @@ const THEME_TOGGLE = [
 
 const ADMIN_NAV = [
   '<script>',
-  '/* add an Admin row to the account/settings dropdown in the nav */',
+  '/* add an Admin row to the account/settings dropdown in the nav -',
+  '   only for admins (checked against the authenticated endpoint) */',
   '(function () {',
   "  function inject() {",
+  "    if (window.__bblAdmin !== true) return;",
   "    var links = document.querySelectorAll('a[href]');",
   "    for (var i = 0; i < links.length; i++) {",
   "      var a = links[i];",
@@ -819,6 +862,9 @@ const ADMIN_NAV = [
   "  inject();",
   "  if (window.MutationObserver) { var mo = new MutationObserver(function () { inject(); }); mo.observe(document.body, { childList: true, subtree: true }); }",
   "  setInterval(inject, 900);",
+  "  fetch('/apisite/users/v1/users/authenticated').then(function (r) {",
+  "    return r.json().then(function (d) { window.__bblAdmin = !!(d && d.isAdmin); inject(); });",
+  "  }).catch(function () { });",
   '})();',
   '</script>',
 ].join('\n');
@@ -850,24 +896,41 @@ function patchCachedShell(html, pageName) {
       .replace(/<meta name="description"[^>]*>/i, '<meta name="description" content="A group on Roblox." />')
       .replace(/ClassicView Studios|ClassicView-Studios|14319283|ClassicView/g, '');
   } else if (pageName === 'gamedetails') {
-    // the one default game: Baseplate by Roblox (place id 1818)
+    // the one default game: Baseplate by Roblox (place id 1)
     html = html
       .replace(/<title>[^<]*<\/title>/i, '<title>Baseplate - Roblox</title>')
       .replace(/<meta property="og:title"[^>]*>/i, '<meta property="og:title" content="Baseplate" />')
-      .replace(/<meta property="og:url"[^>]*>/i, '<meta property="og:url" content="https://www.roblox.com/games/1818/Baseplate" />')
+      .replace(/<meta property="og:url"[^>]*>/i, '<meta property="og:url" content="https://www.roblox.com/games/1/Baseplate" />')
       .replace(/<meta property="og:description"[^>]*>/i, '<meta property="og:description" content="The classic baseplate. A blank canvas to build, play, and imagine with friends." />')
       .replace(/<meta name="description"[^>]*>/i, '<meta name="description" content="The classic baseplate. A blank canvas to build, play, and imagine with friends." />')
-      .replace(/<link rel="canonical"[^>]*>/i, '<link rel="canonical" href="https://www.roblox.com/games/1818/Baseplate" />')
-      .replace(/data-place-id="[^"]*"/g, 'data-place-id="1818"')
-      .replace(/data-root-place-id="[^"]*"/g, 'data-root-place-id="1818"')
-      .replace(/data-universe-id="[^"]*"/g, 'data-universe-id="1818"')
+      .replace(/<link rel="canonical"[^>]*>/i, '<link rel="canonical" href="https://www.roblox.com/games/1/Baseplate" />')
+      .replace(/data-place-id="[^"]*"/g, 'data-place-id="1"')
+      .replace(/data-root-place-id="[^"]*"/g, 'data-root-place-id="1"')
+      .replace(/data-universe-id="[^"]*"/g, 'data-universe-id="1"')
       .replace(/data-private-server-product-id="[^"]*"/g, 'data-private-server-product-id="0"')
       .replace(/data-seller-name="[^"]*"/g, 'data-seller-name="Roblox"')
       .replace(/data-seller-id="[^"]*"/g, 'data-seller-id="1"')
-      .replace(/6872265039|2619619496|1239485700/g, '1818')
+      .replace(/6872265039|2619619496|1239485700/g, '1')
       .replace(/BedWars &#127881; \[SEASON 4!\]|BedWars/g, 'Baseplate')
       .replace(/Easy\.gg|Easy Games/g, 'Roblox')
       .replace(/86,191|2,259,007|2\.8B\+/g, '0');
+  } else if (pageName === 'profile') {
+    // the cached profile (PoptartNoah / 88438775) is scrubbed of all its
+    // cached user data; the session user's meta is inserted by
+    // patchSessionMarkup, so visitors see their own profile.
+    // IMPORTANT: this runs AFTER patchSessionMarkup, so we must not touch
+    // the name="user-data" meta (its data-userid is the session user).
+    // Protect it, scrub, then restore.
+    const metaMatch = /<meta name="user-data"[\s\S]*?\/?>/.exec(html);
+    const meta = metaMatch ? metaMatch[0] : '';
+    if (meta) html = html.replace(meta, '<!--USERDATA-->');
+    html = html
+      .replace(/<title>[^<]*<\/title>/i, '<title>Profile - Roblox</title>')
+      .replace(/PoptartNoah|PoptartNoahh|88438775|@PoptartNoahh/g, '')
+      .replace(/Programmer, artist\.|https:\/\/devforum\.roblox\.com\/t\/665332/g, '')
+      .replace(/ARES VR|Hellreaver Campaign|\(MOBILE\) Hellreaver Arena|Survival: Beginnings|7 Seas Of Sorrow|Rancor \(Legacy\)|BloxPT|Projection Rasterizer Demo|RooM/g, '')
+      .replace(/[0-9]+%|<br>/g, '');
+    if (meta) html = html.replace('<!--USERDATA-->', meta);
   }
   return html;
 }
@@ -893,6 +956,7 @@ app.get(/^\/([a-z0-9-]*)$/i, (req, res, next) => {
 app.get('/admin-api/stats', (req, res) => {
   const user = currentUser(req);
   if (!user) return apiError(res, 401, 0, 'You are not logged in.');
+  if (!isAdminUser(user)) return apiError(res, 403, 0, 'Admin only.');
   let totalUsers = 0;
   let totalSessions = 0;
   let recent = [];

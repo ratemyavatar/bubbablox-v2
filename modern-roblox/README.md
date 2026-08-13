@@ -73,16 +73,23 @@ time in `server.js` — no HTML file on disk is modified.
   plus a Recent Users table, fed by `GET /admin-api/stats` (requires login;
   reads the SQLite store). The old Svelte admin panel moved to `/admin-legacy`.
 - **Cached shells (from the repo's committed caches)** — `/home`, `/games`
-  and `/groups` now use the real cached Roblox shells (`home`, `discover`,
-  group), and `/games/:id/:name` serves a real **game-details** page showing
-  the one default game: **Baseplate by Roblox** (verified check next to the
-  name). All cached data is scrubbed at serve time — the logged-in user
-  (`IAmBanFor`/id `2231932079`), the group name (`ClassicView Studios`) and
-  the game (`BedWars` by `Easy.gg`, real stats) never appear; game ids are
-  rewritten to 1818, the seller to Roblox. The `2022E cache.tar` API shapes
-  are implemented too: `/__api/accountinformation/v1` (settings metadata),
-  `/__api/accountinformation/v1/users/:id/roblox-badges` (real badge set),
-  `/__api/accountsettings/v1` (app chat privacy) and `/email` (scrubbed).
+  and `/groups` use the real cached Roblox shells (`home`, `discover`,
+  group); `/games/:id/:name` serves a real **game-details** page showing
+  the one default game: **Baseplate by Roblox** (place **id 1**, verified
+  check next to the name). **`/users/:id` and `/users/:id/:tab`**
+  (profile/friends/favorites/inventory — the Roblox user URL format)
+  serve the cached **profile** page, scrubbed of its cached user
+  (PoptartNoah/88438775, bio, favorites, experiences) and rewritten to the
+  session user. All cached data is scrubbed at serve time. The `2022E
+  cache.tar` API shapes are implemented too: `/__api/accountinformation/v1`
+  (settings metadata), `/__api/accountinformation/v1/users/:id/roblox-badges`
+  (real badge set), `/__api/accountsettings/v1` (app chat privacy) and
+  `/email` (scrubbed).
+- **Admins** — users have an `isAdmin` flag; the user **`Roblox`**
+  (password `password123`, seeded on boot) is the admin. `/admin-api/stats`
+  is admin-only (403 for non-admins), the Admin nav row only appears for
+  admins (checked via `isAdmin` in the auth response), and the admin
+  dashboard shows "Admin access required" otherwise.
 - **Content fallback** — the pages' content areas are rendered at runtime by
   the CDN bundles, which need Roblox's data APIs (blocked cross-origin), so
   some pages stayed empty or stuck on "Loading...". `fallback.js` (injected
